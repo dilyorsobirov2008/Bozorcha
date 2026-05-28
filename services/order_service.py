@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
 from models.cart import CartItem
-from models.order import Order
-from models.order_item import OrderItem
+from models.order import Order, OrderItem
 from models.product import Product
 from models.user import User
 
