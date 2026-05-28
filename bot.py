@@ -5,6 +5,8 @@ Sets up the database, registers middlewares and handlers, and starts polling.
 
 import asyncio
 import logging
+import os
+from aiohttp import web
 
 from loader import bot, dp
 from database.engine import engine, async_session
@@ -12,6 +14,22 @@ from database.base import Base
 from handlers import register_all_handlers
 from middlewares.db import DbSessionMiddleware
 from middlewares.throttle import ThrottleMiddleware
+
+
+async def start_dummy_server() -> None:
+    """Start a dummy web server to satisfy Render's health check on Web Services."""
+    port = int(os.environ.get("PORT", 8080))
+    app = web.Application()
+    
+    async def handle(request):
+        return web.Response(text="Bot is running!")
+        
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info(f"Dummy web server started on port {port}")
 
 
 async def on_startup() -> None:
@@ -42,6 +60,12 @@ async def main() -> None:
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+
+    # Start dummy web server to prevent Render from force-killing the Web Service
+    try:
+        await start_dummy_server()
+    except Exception as e:
+        logging.warning(f"Failed to start dummy web server: {e}")
 
     await on_startup()
 
