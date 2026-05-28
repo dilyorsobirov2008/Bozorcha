@@ -16,12 +16,13 @@ from middlewares.throttle import ThrottleMiddleware
 
 async def on_startup() -> None:
     """Create all database tables and perform start-up tasks."""
+    # Ensure every model is imported so SQLAlchemy sees them
+    import models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logging.info("Database tables created / verified")
     
-    # Ensure every model is imported so SQLAlchemy sees them
-    import models  # noqa: F401
     from services.admin_service import AdminService
     
     # Seed the requested admin credentials

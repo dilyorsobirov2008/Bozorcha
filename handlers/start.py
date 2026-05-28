@@ -46,9 +46,8 @@ async def language_chosen(message: Message, state: FSMContext, session: AsyncSes
         session,
         telegram_id=message.from_user.id,
         full_name=message.from_user.full_name,
-        username=message.from_user.username,
     )
-    await UserService.update_language(session, user.id, lang)
+    await UserService.update_language(session, message.from_user.id, lang)
 
     # Store language in FSM so every handler can access it quickly
     await state.update_data(lang=lang, user_id=user.id)
