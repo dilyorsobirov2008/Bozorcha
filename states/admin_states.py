@@ -30,3 +30,6 @@ class AdminStates(StatesGroup):
     entering_delivery_price = State()
     adding_admin_login = State()
     adding_admin_password = State()
+    viewing_product_list = State()
+    selecting_price_product = State()
+    selecting_stock_product = State()
