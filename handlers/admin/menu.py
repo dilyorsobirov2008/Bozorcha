@@ -65,7 +65,7 @@ async def admin_categories(callback: CallbackQuery, state: FSMContext, session: 
         await callback.answer()
     except Exception as exc:
         logger.error("admin_categories error: %s", exc, exc_info=True)
-        await callback.answer("❌ Kategoriyalarni yuklashda xatolik.", show_alert=True)
+        await callback.answer(f"❌ Kategoriyalarni yuklashda xatolik: {exc}", show_alert=True)
 
 # ── 📦 Products Handler ──────────────────────────────────────────────────
 @router.callback_query(F.data == "admin_products")
@@ -87,7 +87,7 @@ async def admin_products(callback: CallbackQuery, state: FSMContext, session: As
         await callback.answer()
     except Exception as exc:
         logger.error("admin_products error: %s", exc, exc_info=True)
-        await callback.answer("❌ Tovarlarni yuklashda xatolik.", show_alert=True)
+        await callback.answer(f"❌ Mahsulotlarni yuklashda xatolik: {exc}", show_alert=True)
 
 # ── 🛒 Orders Handler ────────────────────────────────────────────────────
 @router.callback_query(F.data == "admin_orders")
