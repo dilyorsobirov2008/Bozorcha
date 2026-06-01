@@ -75,10 +75,11 @@ async def cb_add_category(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
     except Exception as exc:
         logger.error("cb_add_category error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.message(AddCategory.name)
-async def process_category_name(message: Message, state: FSMContext) -> None:
+async def process_category_name(message: Message, state: FSMContext, session: AsyncSession) -> None:
     try:
         name = message.text.strip()
         if not name:
@@ -88,34 +89,13 @@ async def process_category_name(message: Message, state: FSMContext) -> None:
             await message.answer("❌ Nom 100 ta belgidan oshmasligi kerak. Qayta kiriting:")
             return
 
-        await state.update_data(category_name=name)
-        await state.set_state(AddCategory.emoji)
-        await message.answer(
-            f"📝 Kategoriya nomi: <b>{name}</b>\n\n😀 Endi emoji tanlang (masalan: 🍎, 🥛, 🧴):",
-            reply_markup=back_admin_kb(),
-        )
-    except Exception as exc:
-        logger.error("process_category_name error: %s", exc, exc_info=True)
-        await state.clear()
-        await message.answer("❌ Xatolik yuz berdi.")
-
-@router.message(AddCategory.emoji)
-async def process_category_emoji(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    try:
-        emoji = message.text.strip()
-        if not emoji:
-            await message.answer("❌ Emoji bo'sh bo'lishi mumkin emas. Qayta kiriting:")
-            return
-
-        data = await state.get_data()
-        name = data.get("category_name", "")
-
-        category = await create_category(session=session, name=name, emoji=emoji)
+        # Kategoriya nomi kiritilishi bilan srazu INSERT qilamiz
+        category = await create_category(session=session, name=name, emoji="📁")
         await state.set_state(None)
         await state.update_data(admin_authenticated=True) # preserve auth state
 
         logger.info("Category created: id=%s name=%s", category.id, name)
-        await message.answer(f"✅ Kategoriya yaratildi!\n\n{emoji} <b>{name}</b>")
+        await message.answer(f"✅ Kategoriya yaratildi!\n\n📁 <b>{name}</b>")
         
         # Show updated list
         categories = await get_categories(session)
@@ -124,9 +104,9 @@ async def process_category_emoji(message: Message, state: FSMContext, session: A
             reply_markup=admin_categories_kb(categories),
         )
     except Exception as exc:
-        logger.error("process_category_emoji error: %s", exc, exc_info=True)
+        logger.error("INSERT query error in categories: %s", exc, exc_info=True)
         await state.clear()
-        await message.answer("❌ Kategoriya yaratishda xatolik yuz berdi.")
+        await message.answer(f"❌ Kategoriya yaratishda bazada xatolik yuz berdi: {exc}")
 
 # ── Edit category ────────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_cat_edit:"))
@@ -152,7 +132,8 @@ async def cb_category_edit_menu(callback: CallbackQuery, state: FSMContext, sess
         await callback.answer()
     except Exception as exc:
         logger.error("cb_category_edit_menu error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_cat_edit_name:"))
 async def cb_edit_category_name(callback: CallbackQuery, state: FSMContext) -> None:
@@ -171,7 +152,8 @@ async def cb_edit_category_name(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_category_name error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_cat_edit_emoji:"))
 async def cb_edit_category_emoji(callback: CallbackQuery, state: FSMContext) -> None:
@@ -190,7 +172,8 @@ async def cb_edit_category_emoji(callback: CallbackQuery, state: FSMContext) -> 
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_category_emoji error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.message(EditCategory.value)
 async def process_edit_category_value(message: Message, state: FSMContext, session: AsyncSession) -> None:
@@ -223,9 +206,9 @@ async def process_edit_category_value(message: Message, state: FSMContext, sessi
             reply_markup=admin_categories_kb(categories),
         )
     except Exception as exc:
-        logger.error("process_edit_category_value error: %s", exc, exc_info=True)
+        logger.error("UPDATE query error in categories: %s", exc, exc_info=True)
         await state.clear()
-        await message.answer("❌ Kategoriyani yangilashda xatolik.")
+        await message.answer(f"❌ Kategoriyani yangilashda bazada xatolik yuz berdi: {exc}")
 
 # ── Delete category ──────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_cat_del:"))
@@ -252,7 +235,8 @@ async def cb_delete_category_confirm(callback: CallbackQuery, state: FSMContext,
         await callback.answer()
     except Exception as exc:
         logger.error("cb_delete_category_confirm error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.regexp(r"^adm_cat_del_confirm:\d+_yes$"))
 async def cb_delete_category_yes(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -274,7 +258,8 @@ async def cb_delete_category_yes(callback: CallbackQuery, state: FSMContext, ses
         await _show_categories(callback, state, session)
     except Exception as exc:
         logger.error("cb_delete_category_yes error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.regexp(r"^adm_cat_del_confirm:\d+_no$"))
 async def cb_delete_category_no(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:

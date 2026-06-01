@@ -50,7 +50,6 @@ def _product_detail_text(product) -> str:
     return (
         f"📦 <b>{product.name}</b>\n\n"
         f"📂 Kategoriya: {cat_name}\n"
-        f"📝 Tavsif: {product.description or '—'}\n"
         f"💰 Narx: {format_price(product.price)}\n"
         f"📊 Qoldiq: {product.stock} ta\n"
     )
@@ -97,7 +96,8 @@ async def cb_view_category_products(callback: CallbackQuery, state: FSMContext, 
         await _show_category_products(callback, state, session, cat_id)
     except Exception as exc:
         logger.error("cb_view_category_products error: %s", exc, exc_info=True)
-        await callback.answer("❌ Tovarlarni yuklashda xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_cat_prod_page:"))
 async def cb_cat_product_page(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -137,7 +137,8 @@ async def cb_cat_product_page(callback: CallbackQuery, state: FSMContext, sessio
         await callback.answer()
     except Exception as exc:
         logger.error("cb_cat_product_page error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_prod_add_to_cat:"))
 async def cb_add_product_to_category(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -152,6 +153,7 @@ async def cb_add_product_to_category(callback: CallbackQuery, state: FSMContext,
             await callback.answer("❌ Kategoriya topilmadi", show_alert=True)
             return
 
+        # Pre-select category and start from name
         await state.update_data(product_category_id=cat_id)
         await state.set_state(AddProduct.name)
         await callback.message.edit_text(
@@ -161,7 +163,8 @@ async def cb_add_product_to_category(callback: CallbackQuery, state: FSMContext,
         await callback.answer()
     except Exception as exc:
         logger.error("cb_add_product_to_category error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 # ── Add product — start ─────────────────────────────────────────────────
 @router.callback_query(F.data == "adm_prod_add")
@@ -171,44 +174,18 @@ async def cb_add_product(callback: CallbackQuery, state: FSMContext, session: As
         await callback.answer("⛔ Ruxsat yo'q", show_alert=True)
         return
     try:
-        categories = await get_categories(session)
-        if not categories:
-            await callback.answer("❌ Avval kategoriya qo'shing!", show_alert=True)
-            return
-
-        await state.set_state(AddProduct.category)
-        await callback.message.edit_text(
-            "📦 <b>Yangi tovar qo'shish</b>\n\n📂 Kategoriyani tanlang:",
-            reply_markup=admin_select_category_for_add_kb(categories),
-        )
-        await callback.answer()
-    except Exception as exc:
-        logger.error("cb_add_product error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
-
-# Step 1: category selected
-@router.callback_query(AddProduct.category, F.data.startswith("adm_cat_view:"))
-async def process_product_category(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    logger.info("🎯 Triggered callback: process_product_category")
-    try:
-        cat_id = int(callback.data.split(":")[1])
-        category = await get_category(session, cat_id)
-        if not category:
-            await callback.answer("❌ Kategoriya topilmadi", show_alert=True)
-            return
-
-        await state.update_data(product_category_id=cat_id)
         await state.set_state(AddProduct.name)
         await callback.message.edit_text(
-            f"📂 Kategoriya: <b>{category.name}</b>\n\n📝 Tovar nomini kiriting:",
+            "📦 <b>Yangi tovar qo'shish</b>\n\n📝 Tovar nomini kiriting:",
             reply_markup=back_admin_kb("adm_back_prods"),
         )
         await callback.answer()
     except Exception as exc:
-        logger.error("process_product_category error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        logger.error("cb_add_product error: %s", exc, exc_info=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
-# Step 2: name
+# Step 1: name
 @router.message(AddProduct.name)
 async def process_product_name(message: Message, state: FSMContext) -> None:
     try:
@@ -221,32 +198,16 @@ async def process_product_name(message: Message, state: FSMContext) -> None:
             return
 
         await state.update_data(product_name=name)
-        await state.set_state(AddProduct.description)
+        await state.set_state(AddProduct.price)
         await message.answer(
             f"📝 Nomi: <b>{name}</b>\n\n"
-            "📄 Tovar tavsifini kiriting\n(yoki /skip bosib o'tkazib yuboring):",
+            "💰 Narxini kiriting (so'mda, faqat raqam):",
         )
     except Exception as exc:
         logger.error("process_product_name error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
+        await message.answer(f"❌ Xatolik yuz berdi: {exc}")
 
-# Step 3: description
-@router.message(AddProduct.description)
-async def process_product_description(message: Message, state: FSMContext) -> None:
-    try:
-        if message.text.strip().lower() == "/skip":
-            description = ""
-        else:
-            description = message.text.strip()
-
-        await state.update_data(product_description=description)
-        await state.set_state(AddProduct.price)
-        await message.answer("💰 Narxini kiriting (so'mda):")
-    except Exception as exc:
-        logger.error("process_product_description error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
-
-# Step 4: price
+# Step 2: price
 @router.message(AddProduct.price)
 async def process_product_price(message: Message, state: FSMContext) -> None:
     try:
@@ -262,129 +223,96 @@ async def process_product_price(message: Message, state: FSMContext) -> None:
             return
 
         await state.update_data(product_price=price)
-        await state.set_state(AddProduct.stock)
+        await state.set_state(AddProduct.photo)
         await message.answer(
-            f"💰 Narx: {format_price(price)}\n\n📊 Qoldiq miqdorini kiriting:",
+            f"💰 Narx: {format_price(price)}\n\n📸 Tovar rasmini yuboring\n(yoki /skip bosib o'tkazib yuboring):",
         )
     except Exception as exc:
         logger.error("process_product_price error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
+        await message.answer(f"❌ Xatolik yuz berdi: {exc}")
 
-# Step 5: stock
-@router.message(AddProduct.stock)
-async def process_product_stock(message: Message, state: FSMContext) -> None:
-    try:
-        try:
-            stock = int(message.text.strip())
-        except ValueError:
-            await message.answer("❌ Butun son kiriting (masalan: 100):")
-            return
-
-        if stock < 0:
-            await message.answer("❌ Qoldiq 0 dan kam bo'lishi mumkin emas.")
-            return
-
-        await state.update_data(product_stock=stock)
-        await state.set_state(AddProduct.photo)
-        await message.answer(
-            f"📊 Qoldiq: {stock} ta\n\n📸 Tovar rasmini yuboring\n(yoki /skip bosib o'tkazib yuboring):",
-        )
-    except Exception as exc:
-        logger.error("process_product_stock error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
-
-# Step 6: photo
+# Step 3: photo
 @router.message(AddProduct.photo, F.photo)
 async def process_product_photo(message: Message, state: FSMContext, session: AsyncSession) -> None:
     try:
         photo_id = message.photo[-1].file_id
         await state.update_data(product_photo=photo_id)
-        await _confirm_product(message, state, session)
+        await _ask_category(message, state, session)
     except Exception as exc:
         logger.error("process_product_photo error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
+        await message.answer(f"❌ Xatolik yuz berdi: {exc}")
 
 @router.message(AddProduct.photo, F.text)
 async def process_product_photo_skip(message: Message, state: FSMContext, session: AsyncSession) -> None:
     try:
         if message.text.strip().lower() == "/skip":
             await state.update_data(product_photo=None)
-            await _confirm_product(message, state, session)
+            await _ask_category(message, state, session)
         else:
             await message.answer("📸 Rasm yuboring yoki /skip bosing.")
     except Exception as exc:
         logger.error("process_product_photo_skip error: %s", exc, exc_info=True)
-        await message.answer("❌ Xatolik yuz berdi.")
+        await message.answer(f"❌ Xatolik yuz berdi: {exc}")
 
-async def _confirm_product(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    """Show confirmation summary before creating the product."""
+async def _ask_category(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    """Show categories to select for the new product."""
     data = await state.get_data()
-    category = await get_category(session, data["product_category_id"])
-    cat_name = category.name if category else "—"
+    # If category is already selected (via "Yangi tovar" button inside a category)
+    if "product_category_id" in data:
+        await _insert_product(message, state, session, data["product_category_id"])
+        return
 
-    desc = data.get("product_description") or "—"
-    photo_status = "✅ Bor" if data.get("product_photo") else "❌ Yo'q"
+    categories = await get_categories(session)
+    if not categories:
+        await message.answer("❌ Avval kategoriya qo'shing!")
+        await state.clear()
+        return
 
-    await state.set_state(AddProduct.confirm)
+    await state.set_state(AddProduct.category)
     await message.answer(
-        "📦 <b>Tovar ma'lumotlari:</b>\n\n"
-        f"📂 Kategoriya: {cat_name}\n"
-        f"📝 Nomi: {data['product_name']}\n"
-        f"📄 Tavsif: {desc}\n"
-        f"💰 Narx: {format_price(data['product_price'])}\n"
-        f"📊 Qoldiq: {data['product_stock']} ta\n"
-        f"📸 Rasm: {photo_status}\n\n"
-        "✅ Tasdiqlaysizmi?",
-        reply_markup=confirm_kb("adm_prod_add_confirm"),
+        "📂 Qaysi kategoriyaga qo'shilsin?",
+        reply_markup=admin_select_category_for_add_kb(categories),
     )
 
-# Step 7: confirm
-@router.callback_query(AddProduct.confirm, F.data == "adm_prod_add_confirm_yes")
-async def cb_confirm_add_product(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    logger.info("🎯 Triggered callback: adm_prod_add_confirm_yes")
+# Step 4: category selection & INSERT
+@router.callback_query(AddProduct.category, F.data.startswith("adm_cat_view:"))
+async def process_product_category(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    logger.info("🎯 Triggered callback: process_product_category")
     try:
-        data = await state.get_data()
+        cat_id = int(callback.data.split(":")[1])
+        await _insert_product(callback.message, state, session, cat_id)
+        await callback.answer()
+    except Exception as exc:
+        logger.error("process_product_category error: %s", exc, exc_info=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
+
+async def _insert_product(message: Message, state: FSMContext, session: AsyncSession, category_id: int) -> None:
+    data = await state.get_data()
+    try:
         product = await create_product(
             session=session,
-            category_id=data["product_category_id"],
+            category_id=category_id,
             name=data["product_name"],
-            description=data.get("product_description", ""),
+            description="",  # Simplified
             price=data["product_price"],
-            stock=data["product_stock"],
+            stock=0,         # Simplified
             photo_id=data.get("product_photo"),
         )
-        cat_id = data["product_category_id"]
         await state.clear()
         await state.update_data(admin_authenticated=True) # preserve auth state
 
         logger.info("Product created: id=%s name=%s", product.id, product.name)
-        await callback.message.answer(
+        await message.answer(
             f"✅ Tovar muvaffaqiyatli yaratildi!\n\n📦 <b>{product.name}</b>\n💰 {format_price(product.price)}",
         )
-        await callback.answer("✅ Yaratildi")
 
         # Show product list of the category
-        await _show_category_products(callback, state, session, cat_id)
+        await _show_category_products(message, state, session, category_id)
     except Exception as exc:
-        logger.error("cb_confirm_add_product error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
-
-@router.callback_query(AddProduct.confirm, F.data == "adm_prod_add_confirm_no")
-async def cb_cancel_add_product(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    logger.info("🎯 Triggered callback: adm_prod_add_confirm_no")
-    data = await state.get_data()
-    cat_id = data.get("product_category_id")
-    await state.clear()
-    await state.update_data(admin_authenticated=True) # preserve auth state
-    await callback.answer("🚫 Bekor qilindi")
-    if cat_id:
-        await _show_category_products(callback, state, session, cat_id)
-    else:
-        categories = await get_categories(session)
-        await callback.message.edit_text(
-            "📦 <b>Tovarlar boshqaruvi</b>\n\nKategoriya tanlang:",
-            reply_markup=admin_select_category_kb(categories),
-        )
+        logger.error("INSERT query error in products: %s", exc, exc_info=True)
+        await state.clear()
+        await message.answer(f"❌ Tovarni yaratishda bazada xatolik yuz berdi: {exc}")
 
 # ── View product ─────────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_prod_view:"))
@@ -420,7 +348,8 @@ async def cb_view_product(callback: CallbackQuery, state: FSMContext, session: A
         await callback.answer()
     except Exception as exc:
         logger.error("cb_view_product error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 # ── Edit product menu ────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_prod_edit:"))
@@ -443,7 +372,8 @@ async def cb_edit_product_menu(callback: CallbackQuery, state: FSMContext, sessi
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_menu error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 # ── Individual edit fields ───────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_prod_edit_name:"))
@@ -463,7 +393,8 @@ async def cb_edit_product_name(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_name error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_prod_edit_desc:"))
 async def cb_edit_product_desc(callback: CallbackQuery, state: FSMContext) -> None:
@@ -482,7 +413,8 @@ async def cb_edit_product_desc(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_desc error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_prod_edit_price:"))
 async def cb_edit_product_price(callback: CallbackQuery, state: FSMContext) -> None:
@@ -501,7 +433,8 @@ async def cb_edit_product_price(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_price error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_prod_edit_stock:"))
 async def cb_edit_product_stock(callback: CallbackQuery, state: FSMContext) -> None:
@@ -520,7 +453,8 @@ async def cb_edit_product_stock(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_stock error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_prod_edit_photo:"))
 async def cb_edit_product_photo(callback: CallbackQuery, state: FSMContext) -> None:
@@ -539,7 +473,8 @@ async def cb_edit_product_photo(callback: CallbackQuery, state: FSMContext) -> N
         await callback.answer()
     except Exception as exc:
         logger.error("cb_edit_product_photo error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 # ── Process edit value (text) ────────────────────────────────────────────
 @router.message(EditProduct.value, F.text)
@@ -589,9 +524,9 @@ async def process_edit_product_text(message: Message, state: FSMContext, session
         else:
             await message.answer("❌ Tovar topilmadi.")
     except Exception as exc:
-        logger.error("process_edit_product_text error: %s", exc, exc_info=True)
+        logger.error("UPDATE query error in products: %s", exc, exc_info=True)
         await state.clear()
-        await message.answer("❌ Tovarni yangilashda xatolik.")
+        await message.answer(f"❌ Tovarni yangilashda bazada xatolik: {exc}")
 
 # ── Process edit value (photo) ───────────────────────────────────────────
 @router.message(EditProduct.value, F.photo)
@@ -619,9 +554,9 @@ async def process_edit_product_photo(message: Message, state: FSMContext, sessio
         else:
             await message.answer("❌ Tovar topilmadi.")
     except Exception as exc:
-        logger.error("process_edit_product_photo error: %s", exc, exc_info=True)
+        logger.error("UPDATE query error in products (photo): %s", exc, exc_info=True)
         await state.clear()
-        await message.answer("❌ Rasmni yangilashda xatolik.")
+        await message.answer(f"❌ Rasmni yangilashda bazada xatolik: {exc}")
 
 # ── Delete product ───────────────────────────────────────────────────────
 @router.callback_query(F.data.startswith("adm_prod_del:"))
@@ -644,7 +579,8 @@ async def cb_delete_product(callback: CallbackQuery, state: FSMContext, session:
         await callback.answer()
     except Exception as exc:
         logger.error("cb_delete_product error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.regexp(r"^adm_prod_del_confirm:\d+_yes$"))
 async def cb_delete_product_yes(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -676,7 +612,8 @@ async def cb_delete_product_yes(callback: CallbackQuery, state: FSMContext, sess
             )
     except Exception as exc:
         logger.error("cb_delete_product_yes error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.callback_query(F.data.regexp(r"^adm_prod_del_confirm:\d+_no$"))
 async def cb_delete_product_no(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -710,7 +647,8 @@ async def cb_product_page(callback: CallbackQuery, state: FSMContext, session: A
         await callback.answer()
     except Exception as exc:
         logger.error("cb_product_page error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 # ── Search ───────────────────────────────────────────────────────────────
 @router.callback_query(F.data == "adm_prod_search")
@@ -728,7 +666,8 @@ async def cb_product_search(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
     except Exception as exc:
         logger.error("cb_product_search error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()
 
 @router.message(ProductSearch.query, F.text)
 async def handle_product_search_query(message: Message, state: FSMContext, session: AsyncSession) -> None:
@@ -759,7 +698,7 @@ async def handle_product_search_query(message: Message, state: FSMContext, sessi
         await message.answer("\n".join(lines), reply_markup=back_admin_kb("adm_back_prods"))
     except Exception as exc:
         logger.error("handle_product_search_query error: %s", exc, exc_info=True)
-        await message.answer("❌ Qidiruvda xatolik.")
+        await message.answer(f"❌ Qidiruvda xatolik yuz berdi: {exc}")
 
 # ── Back to products ─────────────────────────────────────────────────────
 @router.callback_query(F.data == "adm_back_prods")
@@ -779,4 +718,5 @@ async def cb_back_to_products(callback: CallbackQuery, state: FSMContext, sessio
         await callback.answer()
     except Exception as exc:
         logger.error("cb_back_to_products error: %s", exc, exc_info=True)
-        await callback.answer("❌ Xatolik", show_alert=True)
+        await callback.message.answer(f"❌ Xatolik yuz berdi: {exc}")
+        await callback.answer()

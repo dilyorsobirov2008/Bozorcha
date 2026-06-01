@@ -6,7 +6,6 @@ class AdminLogin(StatesGroup):
 
 class AddCategory(StatesGroup):
     name = State()
-    emoji = State()
 
 class EditCategory(StatesGroup):
     category_id = State()
@@ -14,14 +13,10 @@ class EditCategory(StatesGroup):
     value = State()
 
 class AddProduct(StatesGroup):
-    category = State()
-    category_id = State()
     name = State()
-    description = State()
     price = State()
-    stock = State()
     photo = State()
-    confirm = State()
+    category = State()
 
 class EditProduct(StatesGroup):
     product_id = State()
@@ -38,4 +33,3 @@ class SettingsState(StatesGroup):
 
 class ProductSearch(StatesGroup):
     query = State()
-
