@@ -76,6 +76,10 @@ async def auto_migrate() -> None:
         # 3.5. Heal database schema by adding any missing columns to existing tables
         async with engine.begin() as conn:
             from sqlalchemy import inspect
+            
+            # Create any missing tables first (like orders, settings, etc.)
+            await conn.run_sync(Base.metadata.create_all)
+            
             def heal_database_schema(connection):
                 inspector = inspect(connection)
                 tables = inspector.get_table_names()
@@ -99,6 +103,9 @@ async def auto_migrate() -> None:
                 # Check products table
                 if "products" in tables:
                     cols = [c["name"] for c in inspector.get_columns("products")]
+                    if "description" not in cols:
+                        connection.execute(sa.text("ALTER TABLE products ADD COLUMN description TEXT NULL"))
+                        logging.info("Healed: Added description column to products table.")
                     if "is_active" not in cols:
                         connection.execute(sa.text("ALTER TABLE products ADD COLUMN is_active BOOLEAN DEFAULT true NOT NULL"))
                         logging.info("Healed: Added is_active column to products table.")
